@@ -1,0 +1,205 @@
+---
+
+- name: db package installed
+  hosts: db
+  gather_facts: false
+  ignore_errors: true
+
+  tasks:
+  - name: php-mysql
+    dnf:
+      name:
+        - mysql-server
+        - python3-PyMySQL
+      state: latest
+
+  - name: mysql  service started
+    ansible.builtin.service:
+      name: mysqld
+      enabled: true
+      state: started
+
+
+  - name: Create database
+    community.mysql.mysql_db:
+      name: word
+      state: present
+      login_unix_socket: /var/lib/mysql/mysql.sock
+
+  - name: Create database user
+    community.mysql.mysql_user:
+      name: yhlee
+      host: '%'
+      password: 'It12345!'
+      priv: '*.*:ALL'
+      state: present
+      login_unix_socket: /var/lib/mysql/mysql.sock
+
+
+
+  - name: firewall open 3306/tcp
+    ansible.posix.firewalld:
+      port: 3306/tcp
+      permanent: true
+      state: enabled
+      immediate: true
+
+
+- name: httpd package installed
+  hosts: web
+  gather_facts: false
+  ignore_errors: true
+  vars:
+    pack: httpd
+
+  tasks:
+  - name: "{{ pack }} installed"
+    dnf:
+      name:
+        - "{{ pack }}"
+        - tar
+        - wget
+        - php
+        - php-mysqlnd
+        - php-gd
+      state: latest
+
+  - name: index.html file copy
+    copy:
+      src: /pac/index.html
+      dest: /var/www/html/index.html
+      owner: apache
+      group: apache
+      mode: '0644'
+
+  - name: line in file
+    lineinfile:
+      path: /var/www/html/index1.html
+      line: <html><body><h1>YHLEE-HTTPD-SERVER</h1></body></html>
+      create: true
+
+  - name: Download word
+    ansible.builtin.get_url:
+      url: https://ko.wordpress.org/wordpress-7.1.3-ko_KR.tar.gz
+      dest: ./
+      mode: '0440'
+
+  - name: unzip
+    ansible.builtin.unarchive:
+      src: /root/wordpress-7.1.3-ko_KR.tar.gz
+      dest: ./
+      remote_src: true
+
+  - name: copy wordpress to html
+    copy:
+      src: /root/wordpress/
+      remote_src: true
+      dest: /var/www/html/
+
+  - name: copy wordpress.php
+    copy:
+      src: /var/www/html/wp-config-sample.php
+      remote_src: true
+      dest: /var/www/html/wp-config.php
+
+  - name: comment out DirectoryIndex index.html
+    ansible.builtin.lineinfile:
+      path: /etc/httpd/conf/httpd.conf
+      regexp: '^    DirectoryIndex index\.html'
+      line: '    #DirectoryIndex index.html'
+
+  - name: exchange html to php
+    lineinfile:
+      path: /etc/httpd/conf/httpd.conf
+      insertbefore: DirectoryIndex index.html
+      line: '    DirectoryIndex index.php'
+
+
+  - name: replace file1
+    replace:
+      path: /var/www/html/wp-config.php
+      regexp: "{{ item.1 }}"
+      replace: "{{ item.2 }}"
+    loop:
+    - { 1: 'database_name_here', 2: 'word' }
+    - { 1: 'username_here', 2: 'yhlee' }
+    - { 1: 'password_here', 2: 'It12345!' }
+    - { 1: 'localhost', 2: '10.0.0.24' }
+
+      #  - name: replace 1
+      #    ansible.builtin.replace:
+      #      path: /var/www/html/wp-config.php
+      #      regexp: "'DB_NAME', 'database_name_here'"
+      #      replace: "'DB_NAME', 'word'"
+      #
+      #  - name: replace 2
+      #    ansible.builtin.replace:
+      #      path: /var/www/html/wp-config.php
+      #      regexp: "'DB_USER', 'username_here'"
+      #      replace: "'DB_USER', 'yhlee'"
+      #
+      #  - name: replace 3
+      #    ansible.builtin.replace:
+      #      path: /var/www/html/wp-config.php
+      #      regexp: "'DB_PASSWORD', 'password_here'"
+      #      replace: "'DB_PASSWORD', 'It12345!'"
+      #
+      #  - name: replace 4
+      #    ansible.builtin.replace:
+      #      path: /var/www/html/wp-config.php
+      #      regexp: "'DB_HOST', 'localhost'"
+      #      replace: "'DB_HOST', '10.0.0.24'"
+
+
+
+
+  - name: "{{ pack }} service started "
+    ansible.builtin.service:
+      name: httpd
+      enabled: true
+      state: started
+
+  - name: firewall open 80/tcp
+    ansible.posix.firewalld:
+      port: 80/tcp
+      permanent: true
+      state: enabled
+      immediate: true
+
+- name: was package installed
+  hosts: was
+  gather_facts: false
+  ignore_errors: true
+
+  tasks:
+  - name: haproxy
+    dnf:
+      name:
+        - haproxy
+      state: latest
+
+  - name: replace haporxy file1
+    replace:
+      path: /etc/haproxy/haproxy.cfg
+      regexp: "{{ item.1 }}"
+      replace: "{{ item.2 }}"
+    loop:
+    - { 1: ':5000', 2: ':80' }
+    - { 1: 'use_backend', 2: '#use_backend' }
+    - { 1: 'server  app1 127.0.0.1:5001', 2: 'server  app1 10.0.0.22:80' }
+    - { 1: 'server  app2', 2: '#server  app2' }
+    - { 1: 'server  app3', 2: '#server  app3' }
+    - { 1: 'server  app4', 2: '#server  app4' }
+
+  - name: firewall open 80/tcp
+    ansible.posix.firewalld:
+      port: 80/tcp
+      permanent: true
+      state: enabled
+      immediate: true
+
+  - name: haproxy  service started
+    ansible.builtin.service:
+      name: haproxy
+      enabled: true
+      state: started
