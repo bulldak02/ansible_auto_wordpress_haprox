@@ -1,0 +1,113 @@
+---
+- name: firewall iit, httpd package remove
+  hosts: web
+  gather_facts: false
+  ignore_errors: true
+  vars:
+    pack: httpd
+
+  tasks:
+  - name: service disabled
+    service:
+      name: httpd
+      enabled: false
+      state: stopped
+    failed_when: false
+
+  - name: firewall init
+    ansible.posix.firewalld:
+      port: 80/tcp
+      permanent: true
+      state: disabled
+      immediate: true
+
+  - name: httpd, wget, tar package remove
+    ansible.builtin.dnf:
+      name:
+        - httpd
+        - wget
+        - tar
+        - php
+        - php-mysqlnd
+        - php-gd
+      state: absent
+      autoremove: true
+
+  - name: remove directory
+    file:
+      path: "{{ item }}"
+      state: absent
+    loop:
+    - /var/www/
+    - /etc/httpd/
+
+
+  - name: remove file
+    file:
+      path: /root/wordpress-7.1.3-ko_KR.tar.gz
+      state: absent
+
+
+- name: remove
+  hosts: was
+  gather_facts: false
+  ignore_errors: true
+
+  tasks:
+  - name: service disabled
+    service:
+      name: haporxy
+      enabled: false
+      state: stopped
+    failed_when: false
+
+  - name: haproxy remove
+    ansible.builtin.dnf:
+      name:
+        - haproxy
+      state: absent
+      autoremove: true
+
+  - name: firewall 80 init
+    ansible.posix.firewalld:
+      port: 80/tcp
+      permanent: true
+      state: disabled
+      immediate: true
+
+
+  - name: remove directory
+    file:
+      path: "{{ item }}"
+      state: absent
+    loop:
+    - /etc/haproxy/
+
+- name: firewall iit, httpd package remove
+  hosts: db
+  gather_facts: false
+  ignore_errors: true
+
+  tasks:
+  - name: service disabled
+    service:
+      name: mysqld
+      enabled: false
+      state: stopped
+    failed_when: false
+
+  - name: httpd, wget, tar package remove
+    ansible.builtin.dnf:
+      name:
+        - mysql-server
+        - python3-PyMySQL
+      state: absent
+      autoremove: true
+
+  - name: firewall 3306 init
+    ansible.posix.firewalld:
+      port: 3306/tcp
+      permanent: true
+      state: disabled
+      immediate: true
+
